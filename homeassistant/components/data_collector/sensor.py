@@ -1,6 +1,8 @@
 """Data collection service for smart home data crowsourcing."""
 from datetime import timedelta
 import logging
+from sys import api_version
+import requests
 
 import async_timeout
 from homeassistant.components.recorder import history
@@ -29,6 +31,11 @@ SCAN_INTERVAL = timedelta(seconds=30)
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({})
 
 BLACKLIST = ["person"]
+
+
+async def send_data_to_api(local_data):
+    api_url = ""  # TODO : gib url
+    r = requests.post(api_url, data=local_data)
 
 
 async def async_setup_platform(
@@ -115,6 +122,8 @@ class Collector(Entity):
         # TODO: check for sensitive information in attributes
 
         # TODO: send data to API
+        # TODO : uncomment this later \/
+        # send_data_to_api(VARIABLE_WITH_THE_DATA _TO_SEND)
 
     @property
     def unique_id(self) -> str:
