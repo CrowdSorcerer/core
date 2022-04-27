@@ -1,10 +1,6 @@
 """Data collection service for smart home data crowsourcing."""
-from datetime import timedelta, datetime
+from datetime import timedelta
 import logging
-from typing import Optional
-
-# from urllib import response
-from requests import get
 
 import async_timeout
 from homeassistant.components.recorder import history
@@ -18,31 +14,28 @@ from homeassistant.helpers import config_validation as ConfigType, entity_regist
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.helpers.entity import Entity
 
-# from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.util import Throttle
 
-from homeassistant.components.history import HistoryPeriodView
+# from homeassistant.components.history import HistoryPeriodView
 from homeassistant.util import dt as dt_util
 
-# from homeassistant.util.dt import now, parse_datetime
-from homeassistant.const import (
-    HTTP_BEARER_AUTHENTICATION,
-)
 
 _LOGGER = logging.getLogger(__name__)
 
-SCAN_INTERVAL = timedelta(hours=24)
+SCAN_INTERVAL = timedelta(seconds=30)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({})
+
+BLACKLIST = ["person"]
 
 
 async def async_setup_platform(
     hass: HomeAssistant,
     config: ConfigType,
-    async_add_entities: AddEntitiesCallback,
-    discovery_info: Optional[DiscoveryInfoType] = None,
+    async_add_entities: AddEntitiesCallback  # ,
+    # discovery_info: Optional[DiscoveryInfoType] = None,
 ) -> None:
     """
     Deprecated.
@@ -55,14 +48,14 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """TODO"""
+    """Add sensor entity from a config_entry"""
     # Migrate old unique_id
     @callback
     def _async_migrator(entity_entry: entity_registry.RegistryEntry):
         # Reject if new unique_id
-        if entity_entry.unique_id.count(",") == 2:
+        if entity_entry.unique_id == "crowsourcerer_data_collector":
             return None
-        new_unique_id = "crowsourcerer_data_collector_2"
+        new_unique_id = "crowsourcerer_data_collector"
         _LOGGER.info(
             "Migrating unique_id from [%s] to [%s]",
             entity_entry.unique_id,
@@ -77,7 +70,7 @@ async def async_setup_entry(
 
 
 class Collector(Entity):
-    """TODO"""
+    """Entity for periodic data collection, anonimization and sending"""
 
     def __init__(self, hass):
         super().__init__()
@@ -97,30 +90,31 @@ class Collector(Entity):
         """Return True if entity is available."""
         return self._available
 
+    # Ocasionally runs this code.
     @Throttle(SCAN_INTERVAL)
     async def async_update(self):
-        """TODO"""
+        """Main execution flow"""
 
-        url = "http://localhost:8123/api/history/period"
-        headers = {
-            "Authorization": f"Bearer {HTTP_BEARER_AUTHENTICATION}",
-            "content-type": "application/json",
-        }
-
-        # response = await self.hass.async_add_executor_job(
-        #    lambda: get(url, headers=headers)
-        # )
         start_date = dt_util.utcnow() - SCAN_INTERVAL
 
-        test = history.state_changes_during_period(
+        raw_data = history.state_changes_during_period(
             start_time=start_date, hass=self.hass
         )
-        # response = self._get_data_from_history()
-        # _LOGGER.debug(response)
-        _LOGGER.debug("\n\n\nAAAAAAAAAAAAAAAAAA\n\n\n %s", test)
-        print("\n\n\nAAAAAAAAAAAAAAAAAA\n\n\n %s", test)
-        async with async_timeout.timeout(10):
-            _LOGGER.debug("update")
+
+        sensor_data = {}
+        for key, value in raw_data.items():
+            # print(key, value)
+            lst = [key.find(s) for s in BLACKLIST]
+            # If one item on the list is not -1, then a blacklisted word was found
+            # TODO: check for sensitive information such as location data, names, etc
+            if lst.count(-1) != len(lst):
+                continue
+            sensor_data[key] = [state.as_dict() for state in value]
+
+        print(sensor_data)
+        # TODO: check for sensitive information in attributes
+
+        # TODO: send data to API
 
     @property
     def unique_id(self) -> str:
