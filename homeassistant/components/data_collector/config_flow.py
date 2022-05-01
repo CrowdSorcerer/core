@@ -2,27 +2,34 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.components import history
 
 # from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.const import CONF_NAME
+from homeassistant.core import callback
+from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import DOMAIN, TIME_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
+SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
 
 # TODO adjust the data schema to the data that you need
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required("host"): str,
+        # generates the ui
+        vol.Required("name"): str,
         vol.Required("username"): str,
         vol.Required("password"): str,
+        vol.Optional("SomeOption"): bool,
     }
 )
 
@@ -36,6 +43,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Init ConfigFlowHandler."""
         self._errors = {}
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        """Get the options flow for this handler."""
+        return CollectorOptionsFlow(config_entry)
+
+    # entrypoint always here
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -80,3 +94,36 @@ class CannotConnect(HomeAssistantError):
 
 class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid auth."""
+
+
+class CollectorOptionsFlow(config_entries.OptionsFlow):
+    """Handle options."""
+
+    def __init__(self, config_entry):
+        """Initialize options flow."""
+
+    async def async_step_init(self, user_input=None):
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        start_date = dt_util.utcnow() - SCAN_INTERVAL
+
+        raw_data = history.state_changes_during_period(
+            start_time=start_date, hass=self.hass
+        )
+        sensor_data = {}
+
+        for key, value in raw_data.items():
+            sensor_data[key] = [state.as_dict() for state in value]
+
+        print(sensor_data.keys())
+
+        config_schema_list = {}
+        for item in sensor_data.keys():
+            config_schema_list[vol.Required(item, description={item})] = bool
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(config_schema_list),
+        )

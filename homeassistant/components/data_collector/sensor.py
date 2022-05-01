@@ -5,6 +5,7 @@ from sys import api_version
 import requests
 
 import async_timeout
+from homeassistant.components.data_collector.const import TIME_INTERVAL
 from homeassistant.components.recorder import history
 from homeassistant.components.recorder.util import session_scope
 
@@ -26,7 +27,7 @@ from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
 
-SCAN_INTERVAL = timedelta(seconds=30)
+SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({})
 
@@ -119,12 +120,17 @@ class Collector(Entity):
             sensor_data[key] = [state.as_dict() for state in value]
 
         print(sensor_data)
+
+        print("AAA")
+        print(sensor_data.keys())
         # TODO: check for sensitive information in attributes
 
         # TODO: send data to API
         # TODO : uncomment this later \/
         # send_data_to_api(VARIABLE_WITH_THE_DATA _TO_SEND)
 
+    # not needed but can get from config flow entry ->gera uma config entry com um id unico
+    # not needed
     @property
     def unique_id(self) -> str:
         """Return a unique id."""
