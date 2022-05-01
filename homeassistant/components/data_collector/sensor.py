@@ -5,6 +5,7 @@ from sys import api_version
 import requests
 
 import async_timeout
+from homeassistant import config_entries
 from homeassistant.components.data_collector.const import TIME_INTERVAL
 from homeassistant.components.recorder import history
 from homeassistant.components.recorder.util import session_scope
@@ -23,15 +24,13 @@ from homeassistant.util import Throttle
 
 # from homeassistant.components.history import HistoryPeriodView
 from homeassistant.util import dt as dt_util
-
+from .const import BLACKLIST, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({})
-
-BLACKLIST = ["person"]
 
 
 async def send_data_to_api(local_data):
@@ -57,23 +56,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Add sensor entity from a config_entry"""
-    # Migrate old unique_id
-    @callback
-    def _async_migrator(entity_entry: entity_registry.RegistryEntry):
-        # Reject if new unique_id
-        if entity_entry.unique_id == "crowsourcerer_data_collector":
-            return None
-        new_unique_id = "crowsourcerer_data_collector"
-        _LOGGER.info(
-            "Migrating unique_id from [%s] to [%s]",
-            entity_entry.unique_id,
-            new_unique_id,
-        )
-        return {"new_unique_id": new_unique_id}
 
-    await entity_registry.async_migrate_entries(
-        hass, config_entry.entry_id, _async_migrator
-    )
+    # something = hass.data[DOMAIN][config_entry.data[""]]
+    # print(something)
+
     async_add_entities([Collector(hass)], True)
 
 
@@ -103,51 +89,44 @@ class Collector(Entity):
     async def async_update(self):
         """Main execution flow"""
 
+        disallowed = []
+        entries = self.hass.config_entries.async_entries()
+        for entry in entries:
+            entry = entry.as_dict()
+            print(entry)
+            if entry["domain"] == "data_collector":
+                for category in entry["options"]:
+                    if not entry["options"][category]:
+                        disallowed.append(category)
+                break
+        print(f"Disallow List: {disallowed}")
         start_date = dt_util.utcnow() - SCAN_INTERVAL
-
         raw_data = history.state_changes_during_period(
             start_time=start_date, hass=self.hass
         )
 
         sensor_data = {}
-        for key, value in raw_data.items():
-            # print(key, value)
-            lst = [key.find(s) for s in BLACKLIST]
-            # If one item on the list is not -1, then a blacklisted word was found
-            # TODO: check for sensitive information such as location data, names, etc
-            if lst.count(-1) != len(lst):
-                continue
+
+        filtered_data = raw_data.copy()
+        for key in raw_data.keys():
+            if key.split(".")[0] in disallowed:
+                filtered_data.pop(key)
+        for key, value in filtered_data.items():
             sensor_data[key] = [state.as_dict() for state in value]
 
-        print(sensor_data)
+        # for key, value in raw_data.items():
+        #    # print(key, value)
+        #    lst = [key.find(s) for s in BLACKLIST]
+        #    # If one item on the list is not -1, then a blacklisted word was found
+        #    # TODO: check for sensitive information such as location data, names, etc
+        #    if lst.count(-1) != len(lst):
+        #        continue
+        #    sensor_data[key] = [state.as_dict() for state in value]
 
-        print("AAA")
-        print(sensor_data.keys())
+        print(filtered_data)
+
         # TODO: check for sensitive information in attributes
 
         # TODO: send data to API
         # TODO : uncomment this later \/
         # send_data_to_api(VARIABLE_WITH_THE_DATA _TO_SEND)
-
-    # not needed but can get from config flow entry ->gera uma config entry com um id unico
-    # not needed
-    @property
-    def unique_id(self) -> str:
-        """Return a unique id."""
-        return "crowsourcerer_data_collector"
-
-    def _get_data_from_history(self):
-        """Fetch significant stats from the database as json."""
-
-        with session_scope(hass=self.hass) as session:
-            result = self.hass.async_add_executor_job(
-                history.get_significant_states_with_session,
-                self.hass,
-                session,
-            )
-
-        result = list(result.result())
-        if _LOGGER.isEnabledFor(logging.DEBUG):
-            _LOGGER.debug("Extracted %d states", sum(map(len, result)))
-
-        return result

@@ -17,7 +17,7 @@ from homeassistant.const import CONF_NAME
 from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, TIME_INTERVAL
+from .const import BLACKLIST, DOMAIN, TIME_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
@@ -105,6 +105,13 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
+
+            print("Selected Sensors:")
+            print(user_input)
+            bl = []
+            for entry in user_input:
+                if not user_input[entry]:
+                    bl.append(entry)
             return self.async_create_entry(title="", data=user_input)
 
         start_date = dt_util.utcnow() - SCAN_INTERVAL
@@ -117,11 +124,15 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
         for key, value in raw_data.items():
             sensor_data[key] = [state.as_dict() for state in value]
 
-        print(sensor_data.keys())
+        sensors = [key.split(".")[0] for key in sensor_data]
 
         config_schema_list = {}
-        for item in sensor_data.keys():
-            config_schema_list[vol.Required(item, description={item})] = bool
+        for item in sensors:
+            config_schema_list[vol.Optional(str(item) + "_desc")] = item
+
+            config_schema_list[
+                vol.Required(item, description={"suggested_value": ""})
+            ] = bool
 
         return self.async_show_form(
             step_id="init",
