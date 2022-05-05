@@ -2,5 +2,5 @@
 
 DOMAIN = "data_collector"
 
-TIME_INTERVAL = 30  # In seconds
+TIME_INTERVAL = 10  # In seconds
 BLACKLIST = []

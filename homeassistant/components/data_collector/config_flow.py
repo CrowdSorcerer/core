@@ -55,8 +55,28 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle the initial step."""
         if user_input is None:
+            start_date = dt_util.utcnow() - SCAN_INTERVAL
+
+            raw_data = history.state_changes_during_period(
+                start_time=start_date, hass=self.hass
+            )
+            sensor_data = {}
+
+            for key, value in raw_data.items():
+                sensor_data[key] = [state.as_dict() for state in value]
+
+            sensors = [key.split(".")[0] for key in sensor_data]
+
+            config_schema_list = {}
+            for item in sensors:
+                config_schema_list[vol.Optional(str(item) + "_desc")] = item
+
+                config_schema_list[
+                    vol.Required(item, description={"suggested_value": ""})
+                ] = bool
             return self.async_show_form(
-                step_id="user", data_schema=STEP_USER_DATA_SCHEMA
+                step_id="user",
+                data_schema=vol.Schema(config_schema_list),
             )
 
         errors = {}
@@ -74,14 +94,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         #    return self.async_create_entry(title=info["title"], data=user_input)
 
         if user_input is not None:
-            if user_input[CONF_NAME] not in self.hass.config_entries.async_entries(
-                DOMAIN
-            ):
-                return self.async_create_entry(
-                    title=user_input[CONF_NAME], data=user_input
-                )
+            print(f"user input: {user_input}")
+            # if user_input[CONF_NAME] not in self.hass.config_entries.async_entries(
+            #    DOMAIN
+            # ):
+            return self.async_create_entry(title="settings", data=user_input)
 
-            self._errors[CONF_NAME] = "name_exists"
+        self._errors[
+            CONF_NAME
+        ] = "This configuration has already taken place. You can change your settings in the integration options panel."
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors

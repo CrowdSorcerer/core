@@ -1,11 +1,19 @@
 """Data collection service for smart home data crowsourcing."""
+import bz2
+from copyreg import pickle
 from datetime import timedelta
 import logging
+import lzma
 from sys import api_version
+import sys
 import requests
+import json
+import zlib
+
 
 import async_timeout
 from homeassistant import config_entries
+from homeassistant.components import sensor
 from homeassistant.components.data_collector.const import TIME_INTERVAL
 from homeassistant.components.recorder import history
 from homeassistant.components.recorder.util import session_scope
@@ -31,6 +39,24 @@ _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({})
+
+
+async def compress_data_zlib(data):
+    bdata = data.encode("utf-8")
+    return zlib.compress(bdata)
+    pass
+
+
+async def compress_data_bz2(data):
+    bdata = data.encode("utf-8")
+    return bz2.compress(bdata)
+    pass
+
+
+async def compress_data_lzma(data):
+    bdata = data.encode("utf-8")
+    return lzma.compress(bdata)
+    pass
 
 
 async def send_data_to_api(local_data):
@@ -93,12 +119,13 @@ class Collector(Entity):
         entries = self.hass.config_entries.async_entries()
         for entry in entries:
             entry = entry.as_dict()
-            print(entry)
+            # print(entry)
             if entry["domain"] == "data_collector":
                 for category in entry["options"]:
                     if not entry["options"][category]:
                         disallowed.append(category)
                 break
+
         print(f"Disallow List: {disallowed}")
         start_date = dt_util.utcnow() - SCAN_INTERVAL
         raw_data = history.state_changes_during_period(
@@ -124,6 +151,18 @@ class Collector(Entity):
         #    sensor_data[key] = [state.as_dict() for state in value]
 
         print(filtered_data)
+        print(sensor_data)
+
+        # json_data = json.dumps(sensor_data.as_dict())
+        json_data = json.dumps(sensor_data)
+
+        print(f"Size before compression: {sys.getsizeof(json_data)}")
+        compressed = await compress_data_zlib(json_data)
+        print(f"zlib - Size after compression: {sys.getsizeof(compressed)}")
+        compressed = await compress_data_bz2(json_data)
+        print(f"bz2 - Size after compression: {sys.getsizeof(compressed)}")
+        compressed = await compress_data_lzma(json_data)
+        print(f"lzma - Size after compression: {sys.getsizeof(compressed)}")
 
         # TODO: check for sensitive information in attributes
 
