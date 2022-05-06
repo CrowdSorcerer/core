@@ -6,6 +6,7 @@ import logging
 import lzma
 from sys import api_version
 import sys
+import time
 import requests
 import json
 import zlib
@@ -32,36 +33,41 @@ from homeassistant.util import Throttle
 
 # from homeassistant.components.history import HistoryPeriodView
 from homeassistant.util import dt as dt_util
-from .const import BLACKLIST, DOMAIN
+from .const import BLACKLIST, DOMAIN, API_URL
 
 _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({})
+UUID = "3cf44ef7-36df-457c-8a98-c16420508a4b"
 
 
 async def compress_data_zlib(data):
     bdata = data.encode("utf-8")
     return zlib.compress(bdata)
-    pass
 
 
 async def compress_data_bz2(data):
     bdata = data.encode("utf-8")
     return bz2.compress(bdata)
-    pass
 
 
 async def compress_data_lzma(data):
     bdata = data.encode("utf-8")
     return lzma.compress(bdata)
-    pass
 
 
-async def send_data_to_api(local_data):
-    api_url = ""  # TODO : gib url
-    r = requests.post(api_url, data=local_data)
+def send_data_to_api(local_data):
+    api_url = API_URL  # TODO : gib url
+    params = {"User-UUID": UUID}
+    r = requests.post(
+        api_url,
+        data=local_data,
+        verify=False,
+        headers={"Home-UUID": UUID, "Content-Type": "application/octet-stream"},
+    )
+    print(r.text)
 
 
 async def async_setup_platform(
@@ -156,16 +162,36 @@ class Collector(Entity):
         # json_data = json.dumps(sensor_data.as_dict())
         json_data = json.dumps(sensor_data)
 
+        #end = time.time()
         print(f"Size before compression: {sys.getsizeof(json_data)}")
+        #start = time.time()
         compressed = await compress_data_zlib(json_data)
-        print(f"zlib - Size after compression: {sys.getsizeof(compressed)}")
-        compressed = await compress_data_bz2(json_data)
-        print(f"bz2 - Size after compression: {sys.getsizeof(compressed)}")
-        compressed = await compress_data_lzma(json_data)
-        print(f"lzma - Size after compression: {sys.getsizeof(compressed)}")
+        #end = time.time()
+#
+        #print(f"zlib - Size after compression: {sys.getsizeof(compressed)}")
+        #print(end - start)
+#
+        #start = time.time()
+#
+        #compressed = await compress_data_bz2(json_data)
+        #end = time.time()
+#
+        #print(f"bz2 - Size after compression: {sys.getsizeof(compressed)}")
+        #print(end - start)
+#
+        #start = time.time()
+#
+        #compressed = await compress_data_lzma(json_data)
+        #end = time.time()
+#
+        #print(f"lzma - Size after compression: {sys.getsizeof(compressed)}")
+        #print(end - start)
 
         # TODO: check for sensitive information in attributes
 
         # TODO: send data to API
         # TODO : uncomment this later \/
-        # send_data_to_api(VARIABLE_WITH_THE_DATA _TO_SEND)
+
+        await self.hass.async_add_executor_job(send_data_to_api, compressed)
+
+    # await send_data_to_api(compressed)
