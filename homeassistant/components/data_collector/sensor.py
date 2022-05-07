@@ -10,7 +10,7 @@ import time
 import requests
 import json
 import zlib
-
+import uuid
 
 import async_timeout
 from homeassistant import config_entries
@@ -40,7 +40,6 @@ _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({})
-UUID = "3cf44ef7-36df-457c-8a98-c16420508a4b"
 
 
 async def compress_data_zlib(data):
@@ -58,16 +57,18 @@ async def compress_data_lzma(data):
     return lzma.compress(bdata)
 
 
-def send_data_to_api(local_data):
+def send_data_to_api(local_data, user_uuid):
     api_url = API_URL  # TODO : gib url
-    params = {"User-UUID": UUID}
+    # print(user_uuid)
+    if user_uuid == None:
+        return
     r = requests.post(
         api_url,
         data=local_data,
         verify=False,
-        headers={"Home-UUID": UUID, "Content-Type": "application/octet-stream"},
+        headers={"Home-UUID": user_uuid, "Content-Type": "application/octet-stream"},
     )
-    print(r.text)
+    # print(r.text)
 
 
 async def async_setup_platform(
@@ -105,6 +106,7 @@ class Collector(Entity):
         # self._state = "..."
         self._available = True
         _LOGGER.debug("init")
+        self.uuid = None
 
     @property
     def name(self) -> str:
@@ -126,9 +128,15 @@ class Collector(Entity):
         for entry in entries:
             entry = entry.as_dict()
             # print(entry)
-            if entry["domain"] == "data_collector":
-                for category in entry["options"]:
-                    if not entry["options"][category]:
+            if entry["domain"] == "data_collector" and entry["title"] == "options":
+                for category in entry["data"]:
+                    # print(f"cat: {category}")
+                    if category == "uuid":
+                        self.uuid = entry["data"][category]
+                        # print(f"Uuid is {self.uuid}")
+
+                    elif not entry["data"][category]:
+                        # print(f" filtering on {category}")
                         disallowed.append(category)
                 break
 
@@ -156,42 +164,42 @@ class Collector(Entity):
         #        continue
         #    sensor_data[key] = [state.as_dict() for state in value]
 
-        print(filtered_data)
+        # print(filtered_data)
         print(sensor_data)
 
         # json_data = json.dumps(sensor_data.as_dict())
         json_data = json.dumps(sensor_data)
 
-        #end = time.time()
+        # end = time.time()
         print(f"Size before compression: {sys.getsizeof(json_data)}")
-        #start = time.time()
+        # start = time.time()
         compressed = await compress_data_zlib(json_data)
-        #end = time.time()
-#
-        #print(f"zlib - Size after compression: {sys.getsizeof(compressed)}")
-        #print(end - start)
-#
-        #start = time.time()
-#
-        #compressed = await compress_data_bz2(json_data)
-        #end = time.time()
-#
-        #print(f"bz2 - Size after compression: {sys.getsizeof(compressed)}")
-        #print(end - start)
-#
-        #start = time.time()
-#
-        #compressed = await compress_data_lzma(json_data)
-        #end = time.time()
-#
-        #print(f"lzma - Size after compression: {sys.getsizeof(compressed)}")
-        #print(end - start)
+        # end = time.time()
+        #
+        # print(f"zlib - Size after compression: {sys.getsizeof(compressed)}")
+        # print(end - start)
+        #
+        # start = time.time()
+        #
+        # compressed = await compress_data_bz2(json_data)
+        # end = time.time()
+        #
+        # print(f"bz2 - Size after compression: {sys.getsizeof(compressed)}")
+        # print(end - start)
+        #
+        # start = time.time()
+        #
+        # compressed = await compress_data_lzma(json_data)
+        # end = time.time()
+        #
+        # print(f"lzma - Size after compression: {sys.getsizeof(compressed)}")
+        # print(end - start)
 
         # TODO: check for sensitive information in attributes
 
         # TODO: send data to API
         # TODO : uncomment this later \/
 
-        await self.hass.async_add_executor_job(send_data_to_api, compressed)
+        await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
 
     # await send_data_to_api(compressed)

@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any
+import uuid
+from github3 import user
 
 import voluptuous as vol
 
@@ -98,8 +100,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # if user_input[CONF_NAME] not in self.hass.config_entries.async_entries(
             #    DOMAIN
             # ):
-            return self.async_create_entry(title="settings", data=user_input)
+            user_input["uuid"] = str(uuid.uuid4())
+            print(f"User input: {user_input}")
+            # self.hass.data[DOMAIN]["UUID"] = uuid.uuid4()
+            return self.async_create_entry(title="options", data=user_input)
 
+        # should never get here, unsure how to solve?
         self._errors[
             CONF_NAME
         ] = "This configuration has already taken place. You can change your settings in the integration options panel."
@@ -133,7 +139,24 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
             for entry in user_input:
                 if not user_input[entry]:
                     bl.append(entry)
-            return self.async_create_entry(title="", data=user_input)
+
+            user_uuid = None
+            entries = self.hass.config_entries.async_entries()
+            for entry in entries:
+                entry_d = entry.as_dict()
+                if (
+                    entry_d["domain"] == "data_collector"
+                    and entry_d["title"] == "options"
+                ):
+                    old_entry = entry
+                    for category in entry_d["data"]:
+                        print(f"cat: {category}")
+                        if category == "uuid":
+                            user_uuid = entry_d["data"][category]
+                        break
+            user_input["uuid"] = user_uuid
+            self.hass.config_entries.async_update_entry(old_entry, data=user_input)
+            return self.async_create_entry(title="options", data=user_input)
 
         start_date = dt_util.utcnow() - SCAN_INTERVAL
 
