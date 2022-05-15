@@ -4,6 +4,7 @@ from datetime import timedelta
 import logging
 import os
 import sys
+from numpy import isin
 import requests
 import json
 import zlib
@@ -32,15 +33,40 @@ SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({})
 PT_NAME_LIST = [
-    {"match": name.strip("\n"), "filth_type": "name"}
+    {
+        "match": name.strip("\n"),
+        "filth_type": "name",
+        "ignore_case": True,
+        "ignore_partial_word_matches": True,
+    }
     for name in open(os.path.join(os.path.dirname(__file__), "pt_names.txt"), "r+")
 ]
 EN_NAME_LIST = [
-    {"match": name.strip("\n"), "filth_type": "name"}
+    {
+        "match": name.strip("\n"),
+        "filth_type": "name",
+        "ignore_case": True,
+        "ignore_partial_word_matches": True,
+    }
     for name in open(os.path.join(os.path.dirname(__file__), "en_names.txt"), "r+")
 ]
 
-FILTERS = EN_NAME_LIST + PT_NAME_LIST
+# CUSTOM_FILTER = [{"match": ', "user_id', "filth_type": "name", "match_end": ","}]
+
+FILTERS = EN_NAME_LIST + PT_NAME_LIST  #  + CUSTOM_FILTER
+FILTERED_KEYS = ["user_id", "last_changed", "last_updated"]
+
+
+class PIIReplacer(scrubadub.post_processors.PostProcessor):
+
+    name = "pii_replacer"
+
+    def process_filth(self, filth_list):
+
+        for filth in filth_list:
+            filth.replacement_string = "REDACTED"
+
+        return filth_list
 
 
 async def compress_data(data):
@@ -49,7 +75,51 @@ async def compress_data(data):
 
 
 async def filter_data(data):
-    scrubber = scrubadub.Scrubber()
+    async def custom_filter(data):
+        if isinstance(data, dict):
+            for key in data:
+                if not isinstance(data[key], str):
+                    if isinstance(data[key], dict):
+                        await custom_filter(data[key])
+                    if isinstance(data[key], list):
+                        for el in data[key]:
+                            await custom_filter(el)
+                else:
+                    if key in FILTERED_KEYS:
+                        print("redacting")
+                        data[key] = "{\{REDACTED}\}"
+        else:
+            if isinstance(data, list):
+                for it in data:
+                    await custom_filter(it)
+            else:
+                if data in FILTERED_KEYS:
+                    print("redacting")
+                    data[key] = """{{REDACTED}}"""
+        return data
+
+    ## meantest = [
+    #    {
+    #        "eter": [
+    #            {"a": "aaaa"},
+    #            {
+    #                "user_id": "asd",
+    #                "test": {
+    #                    "user_id": "das",
+    #                    "tertert": [
+    #                        {"user_id": "dasdasd"},
+    #                        {"asdasd": {"asdasd": "2324", "user_id": "234245456"}},
+    #                    ],
+    #                },
+    #            },
+    #        ]
+    #    }
+    # ]
+
+    data = await custom_filter(data)
+    print("data before scrub")
+    print(data)
+    scrubber = scrubadub.Scrubber(post_processor_list=[PIIReplacer()])
 
     test = {
         "name": "Joseph Joestar",
@@ -63,7 +133,10 @@ async def filter_data(data):
     # TODO Check if we can use this detector -> dependency has a
     # v e r y large file size!
     # scrubber.add_detector(scrubadub_spacy.detectors.AddressDetector)
-    print(scrubber.clean(json.dumps(test)))
+    data = scrubber.clean(json.dumps(data))
+    print("CLEANED UP")
+    print(data)
+
     return data
 
 
@@ -178,13 +251,14 @@ class Collector(Entity):
         print(sensor_data)
 
         # json_data = json.dumps(sensor_data.as_dict())
-        json_data = json.dumps(sensor_data)
+        filtered = await filter_data(sensor_data)
+
+        json_data = json.dumps(filtered)
 
         # end = time.time()
         print(f"Size before compression: {sys.getsizeof(json_data)}")
         # start = time.time()
         compressed = await compress_data(json_data)
-        filtered = await filter_data(compressed)
         # TODO: check for sensitive information in attributes
 
         await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
