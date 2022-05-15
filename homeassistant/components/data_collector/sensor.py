@@ -1,60 +1,70 @@
 """Data collection service for smart home data crowsourcing."""
 import bz2
-from copyreg import pickle
 from datetime import timedelta
 import logging
-import lzma
-from sys import api_version
+import os
 import sys
-import time
 import requests
 import json
 import zlib
-import uuid
+import scrubadub, scrubadub_spacy
 
-import async_timeout
-from homeassistant import config_entries
-from homeassistant.components import sensor
 from homeassistant.components.data_collector.const import TIME_INTERVAL
 from homeassistant.components.recorder import history
-from homeassistant.components.recorder.util import session_scope
 
 from homeassistant.config_entries import ConfigEntry
 
-# from homeassistant.const import ()
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import config_validation as ConfigType, entity_registry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as ConfigType
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.helpers.entity import Entity
 
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import Throttle
 
-# from homeassistant.components.history import HistoryPeriodView
 from homeassistant.util import dt as dt_util
-from .const import BLACKLIST, DOMAIN, API_URL
+from .const import API_URL
 
 _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({})
+PT_NAME_LIST = [
+    {"match": name.strip("\n"), "filth_type": "name"}
+    for name in open(os.path.join(os.path.dirname(__file__), "pt_names.txt"), "r+")
+]
+EN_NAME_LIST = [
+    {"match": name.strip("\n"), "filth_type": "name"}
+    for name in open(os.path.join(os.path.dirname(__file__), "en_names.txt"), "r+")
+]
+
+FILTERS = EN_NAME_LIST + PT_NAME_LIST
 
 
-async def compress_data_zlib(data):
+async def compress_data(data):
     bdata = data.encode("utf-8")
     return zlib.compress(bdata)
 
 
-async def compress_data_bz2(data):
-    bdata = data.encode("utf-8")
-    return bz2.compress(bdata)
+async def filter_data(data):
+    scrubber = scrubadub.Scrubber()
 
+    test = {
+        "name": "Joseph Joestar",
+        "postal_code": "1234-254",
+        "tt": "@handlegoesheere",
+        "ph": "3518844228",
+    }
 
-async def compress_data_lzma(data):
-    bdata = data.encode("utf-8")
-    return lzma.compress(bdata)
+    scrubber.add_detector(scrubadub.detectors.UserSuppliedFilthDetector(FILTERS))
+
+    # TODO Check if we can use this detector -> dependency has a
+    # v e r y large file size!
+    # scrubber.add_detector(scrubadub_spacy.detectors.AddressDetector)
+    print(scrubber.clean(json.dumps(test)))
+    return data
 
 
 def send_data_to_api(local_data, user_uuid):
@@ -173,32 +183,9 @@ class Collector(Entity):
         # end = time.time()
         print(f"Size before compression: {sys.getsizeof(json_data)}")
         # start = time.time()
-        compressed = await compress_data_zlib(json_data)
-        # end = time.time()
-        #
-        # print(f"zlib - Size after compression: {sys.getsizeof(compressed)}")
-        # print(end - start)
-        #
-        # start = time.time()
-        #
-        # compressed = await compress_data_bz2(json_data)
-        # end = time.time()
-        #
-        # print(f"bz2 - Size after compression: {sys.getsizeof(compressed)}")
-        # print(end - start)
-        #
-        # start = time.time()
-        #
-        # compressed = await compress_data_lzma(json_data)
-        # end = time.time()
-        #
-        # print(f"lzma - Size after compression: {sys.getsizeof(compressed)}")
-        # print(end - start)
-
+        compressed = await compress_data(json_data)
+        filtered = await filter_data(compressed)
         # TODO: check for sensitive information in attributes
-
-        # TODO: send data to API
-        # TODO : uncomment this later \/
 
         await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
 

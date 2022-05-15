@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 from typing import Any
 import uuid
-from github3 import user
 
 import voluptuous as vol
 
