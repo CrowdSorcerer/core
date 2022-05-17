@@ -1,8 +1,10 @@
 """Data collection service for smart home data crowsourcing."""
 import bz2
+import copy
 from datetime import timedelta
 import logging
 import os
+import regex as re
 import sys
 from numpy import isin
 import requests
@@ -78,25 +80,65 @@ async def filter_data(data):
     async def custom_filter(data):
         if isinstance(data, dict):
             for key in data:
+
                 if not isinstance(data[key], str):
                     if isinstance(data[key], dict):
+
                         await custom_filter(data[key])
                     if isinstance(data[key], list):
                         for el in data[key]:
                             await custom_filter(el)
                 else:
+
                     if key in FILTERED_KEYS:
-                        print("redacting")
-                        data[key] = "{\{REDACTED}\}"
+                        # print("redacting")
+                        data[key] = "{{REDACTED}}"
         else:
             if isinstance(data, list):
                 for it in data:
+
                     await custom_filter(it)
             else:
+
                 if data in FILTERED_KEYS:
                     print("redacting")
                     data[key] = """{{REDACTED}}"""
         return data
+
+    async def sanitize(data, to_replace):
+        if isinstance(data, dict):
+            for key in data:
+                if key.contains(":"):
+                    to_replace[key] = key.replace(":", "_")
+
+                if not isinstance(data[key], str):
+                    if isinstance(data[key], dict):
+                        if data[key].contains(":"):
+
+                            to_replace[data[key]] = data[key].replace(":", "_")
+
+                        await sanitize(data[key], to_replace)
+                    if isinstance(data[key], list):
+                        for el in data[key]:
+                            if el.contains(":"):
+                                to_replace[el] = el.replace(":", "_")
+
+                            await sanitize(el, to_replace)
+                else:
+                    if el.contains(":"):
+                        to_replace[el] = el.replace(":", "_")
+        else:
+            if isinstance(data, list):
+                for it in data:
+                    if el.contains(":"):
+                        to_replace[el] = el.replace(":", "_")
+
+                    await sanitize(it, to_replace)
+            else:
+                if el.contains(":"):
+                    to_replace[el] = el.replace(":", "_")
+
+        return to_replace
 
     ## meantest = [
     #    {
@@ -116,9 +158,24 @@ async def filter_data(data):
     #    }
     # ]
 
+    # it = (
+    #                    it.replace(".", "_")
+    #                    .replace("<", "_")
+    #                    .replace(">", "_")
+    #                    .replace("*", "_")
+    #                    .replace("#", "_")
+    #                    .replace("%", "_")
+    #                    .replace("&", "_")
+    #                    .replace(":", "_")
+    #                    .replace("\\\\", "_")
+    #                    .replace("+", "_")
+    #                    .replace("?", "_")
+    #                    .replace("/", "_")
+    #                )
+
     data = await custom_filter(data)
-    print("data before scrub")
-    print(data)
+    # print("data before scrub")
+    # print(data)
     scrubber = scrubadub.Scrubber(post_processor_list=[PIIReplacer()])
 
     test = {
@@ -134,15 +191,42 @@ async def filter_data(data):
     # v e r y large file size!
     # scrubber.add_detector(scrubadub_spacy.detectors.AddressDetector)
     data = scrubber.clean(json.dumps(data))
+
+    data = (
+        data.replace(".", "_")
+        .replace("<", "_")
+        .replace(">", "_")
+        .replace("*", "_")
+        .replace(".", "_")
+        .replace("#", "_")
+        .replace("%", "_")
+        .replace("&", "_")
+        .replace("\\\\", "_")
+        .replace("+", "_")
+        .replace("?", "_")
+        .replace("/", "_")
+    )
+    print(data)
+
+    data = data.replace(" _ ", ":")
+    data = re.sub("(?<=\d)_(?=\d)", ".", data)
+
+    print("replaced")
+    print(data)
+    data = json.loads(data)
+    # to_replace = await sanitize(data, {})
     print("CLEANED UP")
     print(data)
+    print("to repl:")
+    #    print(to_replace)
 
     return data
 
 
 def send_data_to_api(local_data, user_uuid):
     api_url = API_URL  # TODO : gib url
-    # print(user_uuid)
+    print("\nSENDING DATA\n\n")
+    print(user_uuid)
     if user_uuid == None:
         return
     r = requests.post(
@@ -151,7 +235,7 @@ def send_data_to_api(local_data, user_uuid):
         verify=False,
         headers={"Home-UUID": user_uuid, "Content-Type": "application/octet-stream"},
     )
-    # print(r.text)
+    print(r.text)
 
 
 async def async_setup_platform(
@@ -260,7 +344,8 @@ class Collector(Entity):
         # start = time.time()
         compressed = await compress_data(json_data)
         # TODO: check for sensitive information in attributes
-
+        print("DAta type:")
+        print(type(compressed))
         await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
 
     # await send_data_to_api(compressed)
