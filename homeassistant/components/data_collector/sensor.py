@@ -77,17 +77,17 @@ async def compress_data(data):
 
 
 async def filter_data(data):
-    async def custom_filter(data):
+    async def custom_filter_keys(data):
         if isinstance(data, dict):
             for key in data:
 
                 if not isinstance(data[key], str):
                     if isinstance(data[key], dict):
 
-                        await custom_filter(data[key])
+                        await custom_filter_keys(data[key])
                     if isinstance(data[key], list):
                         for el in data[key]:
-                            await custom_filter(el)
+                            await custom_filter_keys(el)
                 else:
 
                     if key in FILTERED_KEYS:
@@ -97,7 +97,7 @@ async def filter_data(data):
             if isinstance(data, list):
                 for it in data:
 
-                    await custom_filter(it)
+                    await custom_filter_keys(it)
             else:
 
                 if data in FILTERED_KEYS:
@@ -140,6 +140,11 @@ async def filter_data(data):
 
         return to_replace
 
+    def custom_filter_reg():
+        ip = "/^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$/"
+        postal_PT = "\d{4}([\-]\d{3})?"
+
+    # For filter testing (checks if working in nested lists/dicts)
     ## meantest = [
     #    {
     #        "eter": [
@@ -173,7 +178,7 @@ async def filter_data(data):
     #                    .replace("/", "_")
     #                )
 
-    data = await custom_filter(data)
+    data = await custom_filter_keys(data)
     # print("data before scrub")
     # print(data)
     scrubber = scrubadub.Scrubber(post_processor_list=[PIIReplacer()])
