@@ -10,7 +10,7 @@ from numpy import isin
 import requests
 import json
 import zlib
-import scrubadub, scrubadub_spacy
+import scrubadub
 
 from homeassistant.components.data_collector.const import TIME_INTERVAL
 from homeassistant.components.recorder import history
@@ -275,7 +275,8 @@ class Collector(Entity):
         super().__init__()
         self.hass = hass
         self._name = "Home"
-        # self._state = "..."
+        self._state = "Collecting"
+        self._attr_extra_state_attributes = { "test_key": "test_val" }
         self._available = True
         _LOGGER.debug("init")
         self.uuid = None
@@ -284,6 +285,16 @@ class Collector(Entity):
     def name(self) -> str:
         """Returns name of the entity"""
         return self._name
+
+    @property
+    def state(self) -> str:
+        """Returns state of the entity"""
+        return self._state
+    
+    @property
+    def extra_state_attributes(self):
+        """Return state attributes"""
+        return self._attr_extra_state_attributes
 
     @property
     def available(self) -> bool:
