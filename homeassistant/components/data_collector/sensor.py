@@ -1,7 +1,7 @@
 """Data collection service for smart home data crowsourcing."""
 import bz2
 import copy
-from datetime import timedelta
+from datetime import timedelta, datetime
 import logging
 import os
 import regex as re
@@ -274,7 +274,7 @@ class Collector(Entity):
     def __init__(self, hass):
         super().__init__()
         self.hass = hass
-        self._name = "Home"
+        self._name = "Crowdsourcerer"
         self._state = "Collecting"
         self._attr_extra_state_attributes = { "test_key": "test_val" }
         self._available = True
@@ -316,6 +316,7 @@ class Collector(Entity):
                     # print(f"cat: {category}")
                     if category == "uuid":
                         self.uuid = entry["data"][category]
+                        self._attr_extra_state_attributes["uuid"] = entry["data"][category]
                         # print(f"Uuid is {self.uuid}")
 
                     elif not entry["data"][category]:
@@ -333,7 +334,7 @@ class Collector(Entity):
 
         filtered_data = raw_data.copy()
         for key in raw_data.keys():
-            if key.split(".")[0] in disallowed:
+            if key.split(".")[0] in disallowed or key == f"sensor.{self._name.lower()}":
                 filtered_data.pop(key)
         for key, value in filtered_data.items():
             sensor_data[key] = [state.as_dict() for state in value]
@@ -362,6 +363,17 @@ class Collector(Entity):
         # TODO: check for sensitive information in attributes
         print("DAta type:")
         print(type(compressed))
+
+        compressed_size = sys.getsizeof(compressed)
+        self._attr_extra_state_attributes["last_sent_size"] = round(compressed_size / 1000, 3)
+        total_size = self._attr_extra_state_attributes.get("total_sent_size", 0)
+        self._attr_extra_state_attributes["total_sent_size"] = round(total_size + compressed_size / 1000, 3)
+
+        curr_day = datetime.today().strftime('%Y-%m-%d')
+        self._attr_extra_state_attributes["last_sent_date"] = curr_day
+        if "first_sent_date" not in self._attr_extra_state_attributes:
+            self._attr_extra_state_attributes["first_sent_date"] = curr_day
+
         await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
 
     # await send_data_to_api(compressed)
