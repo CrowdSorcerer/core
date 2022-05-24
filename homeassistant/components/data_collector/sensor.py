@@ -354,6 +354,8 @@ class Collector(Entity):
         # json_data = json.dumps(sensor_data.as_dict())
         filtered = await filter_data(sensor_data)
 
+        self._attr_extra_state_attributes["last_sent_data"] = filtered
+
         json_data = json.dumps(filtered)
 
         # end = time.time()
@@ -373,6 +375,11 @@ class Collector(Entity):
         self._attr_extra_state_attributes["last_sent_date"] = curr_day
         if "first_sent_date" not in self._attr_extra_state_attributes:
             self._attr_extra_state_attributes["first_sent_date"] = curr_day
+
+
+        print("current entity uuid:", self._attr_extra_state_attributes["uuid"])
+        print("last sent data:", self._attr_extra_state_attributes["last_sent_data"])
+
 
         await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
 
