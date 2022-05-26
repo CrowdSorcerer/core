@@ -1,32 +1,29 @@
-"""Data collection service for smart home data crowsourcing."""
+"""Data collection service for smart home data crowdsourcing."""
 import bz2
 import copy
 from datetime import timedelta
+import json
 import logging
 import os
-import regex as re
 import sys
-from numpy import isin
-import requests
-import json
 import zlib
-import scrubadub, scrubadub_spacy
+
+from numpy import isin
+import regex as re
+import requests
+import scrubadub
 
 from homeassistant.components.data_collector.const import TIME_INTERVAL
 from homeassistant.components.recorder import history
-
+from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.config_entries import ConfigEntry
-
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as ConfigType
-from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.helpers.entity import Entity
-
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.util import Throttle
+from homeassistant.util import Throttle, dt as dt_util
 
-from homeassistant.util import dt as dt_util
 from .const import API_URL
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,6 +50,24 @@ EN_NAME_LIST = [
     for name in open(os.path.join(os.path.dirname(__file__), "en_names.txt"), "r+")
 ]
 
+PT_LOCATION_LIST = [
+    {
+        "match": name.strip("\n"),
+        "filth_type": "name",
+        "ignore_case": True,
+        "ignore_partial_word_matches": True,
+    }
+    for name in open(os.path.join(os.path.dirname(__file__), "locations_pt.txt"), "r+")
+]
+COUNTRY_LIST = [
+    {
+        "match": name.strip("\n"),
+        "filth_type": "name",
+        "ignore_case": True,
+        "ignore_partial_word_matches": True,
+    }
+    for name in open(os.path.join(os.path.dirname(__file__), "countries.txt"), "r+")
+]
 # CUSTOM_FILTER = [{"match": ', "user_id', "filth_type": "name", "match_end": ","}]
 
 FILTERS = EN_NAME_LIST + PT_NAME_LIST  #  + CUSTOM_FILTER
@@ -141,8 +156,8 @@ async def filter_data(data):
         return to_replace
 
     def custom_filter_reg():
-        ip = "/^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$/"
-        postal_PT = "\d{4}([\-]\d{3})?"
+        ip = r"/^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$/"
+        postal_PT = r"\d{4}([\-]\d{3})?"
 
     # For filter testing (checks if working in nested lists/dicts)
     ## meantest = [
@@ -214,7 +229,7 @@ async def filter_data(data):
     print(data)
 
     data = data.replace(" _ ", ":")
-    data = re.sub("(?<=\d)_(?=\d)", ".", data)
+    data = re.sub(r"(?<=\d)_(?=\d)", ".", data)
 
     print("replaced")
     print(data)

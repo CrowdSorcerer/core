@@ -1,8 +1,8 @@
 """Config flow for Crowdsourcerer integration."""
 from __future__ import annotations
 
-import logging
 from datetime import timedelta
+import logging
 from typing import Any
 import uuid
 
@@ -10,15 +10,15 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components import history
+from homeassistant.const import CONF_NAME
+from homeassistant.core import callback
 
 # from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.const import CONF_NAME
-from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
 
-from .const import BLACKLIST, DOMAIN, TIME_INTERVAL
+from .const import DOMAIN, TIME_INTERVAL, logger
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
@@ -48,6 +48,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
+        logger.warn("\n\n Data Collector is being setup\n\n")
+
         return CollectorOptionsFlow(config_entry)
 
     # entrypoint always here
@@ -56,6 +58,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle the initial step."""
         if user_input is None:
+            logger.warn("\n\n Data Collector starting config flow\n\n")
+
             start_date = dt_util.utcnow() - SCAN_INTERVAL
 
             raw_data = history.state_changes_during_period(

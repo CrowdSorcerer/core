@@ -3,14 +3,8 @@
   "name": "Crowdsourcerer",
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/data_collector",
-  "requirements": [
-    "scrubadub",
-    "scrubadub_spacy"
-  ],
-  "ssdp": [],
-  "zeroconf": [],
-  "homekit": {},
-  "dependencies": [],
-  "codeowners": ["@CrowdSourcerer","@Inryatt","@diomont"],
-  "iot_class": "cloud_polling"
+  "requirements": ["scrubadub==2.0.0"],
+  "codeowners": ["@CrowdSourcerer", "@Inryatt", "@diomont"],
+  "iot_class": "cloud_polling",
+  "version": 0.6
 }

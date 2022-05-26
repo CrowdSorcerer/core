@@ -2111,6 +2111,9 @@ schiene==0.23
 # homeassistant.components.screenlogic
 screenlogicpy==0.5.4
 
+# homeassistant.components.data_collector
+scrubadub==2.0.0
+
 # homeassistant.components.scsgate
 scsgate==0.1.0
 
