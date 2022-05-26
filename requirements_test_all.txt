@@ -1372,7 +1372,7 @@ scapy==2.4.5
 screenlogicpy==0.5.4
 
 # homeassistant.components.data_collector
-scrubadub==2.0.0
+cs_scrubadub==2.0.2
 
 # homeassistant.components.backup
 securetar==2022.2.0
