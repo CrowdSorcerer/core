@@ -243,7 +243,7 @@ async def filter_data(data):
 
 
 def send_data_to_api(local_data, user_uuid):
-    api_url = API_URL  # TODO : gib url
+    api_url = API_URL
     print("\nSENDING DATA\n\n")
     print(user_uuid)
     if user_uuid == None:
@@ -370,9 +370,9 @@ class Collector(Entity):
         # json_data = json.dumps(sensor_data.as_dict())
         filtered = await filter_data(sensor_data)
 
-        self._attr_extra_state_attributes["last_sent_data"] = filtered
-
         json_data = json.dumps(filtered)
+
+        self._attr_extra_state_attributes["last_sent_data"] = json_data
 
         # end = time.time()
         print(f"Size before compression: {sys.getsizeof(json_data)}")
@@ -396,8 +396,6 @@ class Collector(Entity):
         if "first_sent_date" not in self._attr_extra_state_attributes:
             self._attr_extra_state_attributes["first_sent_date"] = curr_day
 
-        print("current entity uuid:", self._attr_extra_state_attributes["uuid"])
-        print("last sent data:", self._attr_extra_state_attributes["last_sent_data"])
 
         await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
 
