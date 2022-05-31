@@ -1,19 +1,21 @@
 """Data collection service for smart home data crowdsourcing."""
 
+import functools
 import json
 from datetime import timedelta, datetime
 import logging
 import os
 import sys
 import zlib
-
+from time import time
 import regex as re
 import requests
 import scrubadub
+from random import randint
 
+import homeassistant.components.recorder as recorder
 
-from homeassistant.components.data_collector.const import TIME_INTERVAL
-from homeassistant.components.recorder import history
+from homeassistant.components.recorder.history import state_changes_during_period
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -23,7 +25,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import Throttle, dt as dt_util
 
-from .const import API_URL
+from .const import API_URL, TIME_INTERVAL, logger
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,10 +69,23 @@ COUNTRY_LIST = [
     }
     for name in open(os.path.join(os.path.dirname(__file__), "countries.txt"), "r+")
 ]
+CUSTOM_BLACKLIST = [
+    {
+        "match": name.strip("\n"),
+        "filth_type": "name",
+        "ignore_case": True,
+        "ignore_partial_word_matches": True,
+    }
+    for name in open(
+        os.path.join(os.path.dirname(__file__), "custom_blacklist.txt"), "r+"
+    )
+]
 # CUSTOM_FILTER = [{"match": ', "user_id', "filth_type": "name", "match_end": ","}]
 
-FILTERS = EN_NAME_LIST + PT_NAME_LIST  #  + CUSTOM_FILTER
-FILTERED_KEYS = ["user_id", "last_changed", "last_updated"]
+FILTERS = (
+    EN_NAME_LIST + PT_NAME_LIST + COUNTRY_LIST + PT_LOCATION_LIST + CUSTOM_BLACKLIST
+)
+FILTERED_KEYS = ["user_id"]
 
 
 class PIIReplacer(scrubadub.post_processors.PostProcessor):
@@ -154,6 +169,7 @@ async def filter_data(data):
 
         return to_replace
 
+    # TODO get this working
     def custom_filter_reg():
         ip = r"/^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$/"
         postal_PT = r"\d{4}([\-]\d{3})?"
@@ -243,18 +259,29 @@ async def filter_data(data):
 
 
 def send_data_to_api(local_data, user_uuid):
-    api_url = API_URL  # TODO : gib url
-    print("\nSENDING DATA\n\n")
-    print(user_uuid)
-    if user_uuid == None:
-        return
-    r = requests.post(
-        api_url,
-        data=local_data,
-        verify=False,
-        headers={"Home-UUID": user_uuid, "Content-Type": "application/octet-stream"},
-    )
-    print(r.text)
+    api_url = API_URL
+    print("AAAAAAAAA")
+    print(type(local_data))
+
+    print(local_data)
+    if local_data != {} and local_data != b"{}" and local_data != "{}":
+        print("\nSENDING DATA\n\n")
+        logger.warn("Sending data")
+        print(user_uuid)
+        if user_uuid == None:
+            return
+        r = requests.post(
+            api_url,
+            data=local_data,
+            verify=False,
+            headers={
+                "Home-UUID": user_uuid,
+                "Content-Type": "application/octet-stream",
+            },
+        )
+        print(r.text)
+    else:
+        logger.warn("Ey! This Data EMPTY! YEEEEEEEEEEEET")
 
 
 async def async_setup_platform(
@@ -294,6 +321,8 @@ class Collector(Entity):
         self._available = True
         _LOGGER.debug("init")
         self.uuid = None
+        self.last_ran = dt_util.utcnow()
+        self.random_salt = randint(600000, 3600000)
 
     @property
     def name(self) -> str:
@@ -317,8 +346,22 @@ class Collector(Entity):
 
     # Ocasionally runs this code.
     @Throttle(SCAN_INTERVAL)
+    async def check_time(self):
+        """Can we run again yet?"""
+        if dt_util.utcnow() > self.last_ran + self.random_salt + 86400000:
+            self.random_salt = randint(600000, 3600000)
+            TIME_INTERVAL = 86400
+            SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
+            self.async_update()
+        else:
+            TIME_INTERVAL = 3600
+            SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
+
     async def async_update(self):
         """Main execution flow"""
+        self.last_ran = dt_util.utcnow()
+
+        logger.warn("\n\n Data Collector do be collectin'\n\n")
 
         disallowed = []
         entries = self.hass.config_entries.async_entries()
@@ -342,10 +385,11 @@ class Collector(Entity):
 
         print(f"Disallow List: {disallowed}")
         start_date = dt_util.utcnow() - SCAN_INTERVAL
-        raw_data = history.state_changes_during_period(
-            start_time=start_date, hass=self.hass
+        raw_data = await recorder.get_instance(self.hass).async_add_executor_job(
+            functools.partial(
+                state_changes_during_period, start_time=start_date, hass=self.hass
+            )
         )
-
         sensor_data = {}
 
         filtered_data = raw_data.copy()
@@ -366,19 +410,28 @@ class Collector(Entity):
 
         # print(filtered_data)
         print(sensor_data)
+        logger.warn("\n\n Data Collector will send this data:\n\n")
 
+        logger.warn(sensor_data)
         # json_data = json.dumps(sensor_data.as_dict())
+        logger.warn("\n\n Data Collector is now Filtering the data\n\n")
+
         filtered = await filter_data(sensor_data)
 
         self._attr_extra_state_attributes["last_sent_data"] = filtered
+
+        logger.warn("\n\n Data Collector will send this filtered data:\n\n")
+
+        logger.warn(filtered)
 
         json_data = json.dumps(filtered)
 
         # end = time.time()
         print(f"Size before compression: {sys.getsizeof(json_data)}")
         # start = time.time()
+        logger.warn("\n\n Data Collector is now Compressing the data\n\n")
+
         compressed = await compress_data(json_data)
-        # TODO: check for sensitive information in attributes
         print("DAta type:")
         print(type(compressed))
 
@@ -398,6 +451,7 @@ class Collector(Entity):
 
         print("current entity uuid:", self._attr_extra_state_attributes["uuid"])
         print("last sent data:", self._attr_extra_state_attributes["last_sent_data"])
+        logger.warn("\n\n Data Collector is now Sending the data\n\n")
 
         await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
 

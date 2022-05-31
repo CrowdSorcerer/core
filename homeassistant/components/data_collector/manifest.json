@@ -3,7 +3,7 @@
   "name": "Crowdsourcerer",
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/data_collector",
-  "requirements": ["cs_scrubadub==2.0.2"],
+  "requirements": ["cs_scrubadub==2.1.0"],
   "codeowners": ["@CrowdSourcerer", "@Inryatt", "@diomont"],
   "iot_class": "cloud_polling",
   "version": 0.6
