@@ -418,13 +418,13 @@ class Collector(Entity):
 
         filtered = await filter_data(sensor_data)
 
-        self._attr_extra_state_attributes["last_sent_data"] = filtered
-
         logger.warn("\n\n Data Collector will send this filtered data:\n\n")
 
         logger.warn(filtered)
 
         json_data = json.dumps(filtered)
+
+        self._attr_extra_state_attributes["last_sent_data"] = json_data
 
         # end = time.time()
         print(f"Size before compression: {sys.getsizeof(json_data)}")
