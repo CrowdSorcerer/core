@@ -273,7 +273,7 @@ def send_data_to_api(local_data, user_uuid):
         r = requests.post(
             api_url,
             data=local_data,
-            verify=False,
+            #            verify=False,
             headers={
                 "Home-UUID": user_uuid,
                 "Content-Type": "application/octet-stream",
