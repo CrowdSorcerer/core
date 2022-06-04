@@ -18,12 +18,16 @@ import homeassistant.components.recorder as recorder
 from homeassistant.components.recorder.history import state_changes_during_period
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as ConfigType
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import Throttle, dt as dt_util
+from homeassistant.helpers.event import (
+    async_track_time_change,
+    async_track_time_interval,
+)
 
 from .const import API_URL, TIME_INTERVAL, logger
 
@@ -56,7 +60,6 @@ PT_LOCATION_LIST = [
         "match": name.strip("\n"),
         "filth_type": "name",
         "ignore_case": True,
-        "ignore_partial_word_matches": True,
     }
     for name in open(os.path.join(os.path.dirname(__file__), "locations_pt.txt"), "r+")
 ]
@@ -83,9 +86,10 @@ CUSTOM_BLACKLIST = [
 # CUSTOM_FILTER = [{"match": ', "user_id', "filth_type": "name", "match_end": ","}]
 
 FILTERS = (
-    EN_NAME_LIST + PT_NAME_LIST + COUNTRY_LIST + PT_LOCATION_LIST + CUSTOM_BLACKLIST
-)
-FILTERED_KEYS = ["user_id"]
+    EN_NAME_LIST + PT_NAME_LIST + COUNTRY_LIST + CUSTOM_BLACKLIST + PT_LOCATION_LIST
+)  # + PT_LOCATION_LIST TODO : THIS IS THE GUILTY BASTARD - FIND OUT WHY IT NOT WORKING - MAYBE MULTIPLE WORDS PER LINE?
+
+FILTERED_KEYS = ["user_id", "latitude", "longitude"]
 
 
 class PIIReplacer(scrubadub.post_processors.PostProcessor):
@@ -246,13 +250,13 @@ async def filter_data(data):
     data = data.replace(" _ ", ":")
     data = re.sub(r"(?<=\d)_(?=\d)", ".", data)
 
-    print("replaced")
+    # print("replaced")
     print(data)
     data = json.loads(data)
     # to_replace = await sanitize(data, {})
     print("CLEANED UP")
     print(data)
-    print("to repl:")
+    # print("to repl:")
     #    print(to_replace)
 
     return data
@@ -260,15 +264,25 @@ async def filter_data(data):
 
 def send_data_to_api(local_data, user_uuid):
     api_url = API_URL
-    print("AAAAAAAAA")
-    print(type(local_data))
+    # print(type(local_data))
+    # print(local_data)
 
-    print(local_data)
-    if local_data != {} and local_data != b"{}" and local_data != "{}":
+    # print(local_data)
+    if (
+        local_data != {}
+        and local_data != b"{}"
+        and local_data != "{}"
+        and local_data != b"x\x9c\xab\xae\x05\x00\x01u\x00\xf9"  # I don't know anymore
+        and local_data != None
+    ):
         print("\nSENDING DATA\n\n")
-        logger.warn("Sending data")
-        print(user_uuid)
+        # logger.warn("Sending data")
+        # print(user_uuid)
         if user_uuid == None:
+            logger.error(
+                "UUID is null - Something's very wrong. Please reinstall the collector and contact the codeowners!"
+            )
+
             return
         r = requests.post(
             api_url,
@@ -279,7 +293,7 @@ def send_data_to_api(local_data, user_uuid):
                 "Content-Type": "application/octet-stream",
             },
         )
-        print(r.text)
+        # print(r.text)
     else:
         logger.warn("Ey! This Data EMPTY! YEEEEEEEEEEEET")
 
@@ -321,8 +335,18 @@ class Collector(Entity):
         self._available = True
         _LOGGER.debug("init")
         self.uuid = None
-        self.last_ran = dt_util.utcnow()
-        self.random_salt = randint(600000, 3600000)
+        # self.random_salt = randint(600000, 3600000)
+        # self.random_time = [randint(0, 6), randint(0, 59), randint(0, 59)]
+        schedule = async_track_time_change(
+            self.hass,
+            self.async_collect_data,
+            # self.random_time[0],
+            # self.random_time[1],
+            # self.random_time[2],
+            second=30,
+        )
+
+    #        schedule()
 
     @property
     def name(self) -> str:
@@ -344,97 +368,88 @@ class Collector(Entity):
         """Return True if entity is available."""
         return self._available
 
-    # Ocasionally runs this code.
-    @Throttle(SCAN_INTERVAL)
-    async def check_time(self):
-        """Can we run again yet?"""
-        if dt_util.utcnow() > self.last_ran + self.random_salt + 86400000:
-            self.random_salt = randint(600000, 3600000)
-            TIME_INTERVAL = 86400
-            SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
-            self.async_update()
-        else:
-            TIME_INTERVAL = 3600
-            SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
-
-    async def async_update(self):
+    @callback
+    async def async_collect_data(self, *_):
         """Main execution flow"""
-        self.last_ran = dt_util.utcnow()
 
-        logger.warn("\n\n Data Collector do be collectin'\n\n")
+        try:
+            print(f"Last ran: {self.last_ran}")
+        except AttributeError:
+
+            self.last_ran = dt_util.start_of_local_day()
+
+            print(f"Last ran: {self.last_ran}")
+
+            # Should only happen the very first time it's ran.
+            # Why not on init? It'd reset the time everytime HA was restarted.
+            # Like this we lose one cycle but persist through restarts.
+        # logger.warn("\n\n Data Collector do be collectin'\n\n")
 
         disallowed = []
         entries = self.hass.config_entries.async_entries()
+
         for entry in entries:
             entry = entry.as_dict()
-            # print(entry)
             if entry["domain"] == "data_collector" and entry["title"] == "options":
                 for category in entry["data"]:
-                    # print(f"cat: {category}")
                     if category == "uuid":
                         self.uuid = entry["data"][category]
                         self._attr_extra_state_attributes["uuid"] = entry["data"][
                             category
                         ]
-                        # print(f"Uuid is {self.uuid}")
-
                     elif not entry["data"][category]:
-                        # print(f" filtering on {category}")
                         disallowed.append(category)
                 break
+        # print(f"Disallow List: {disallowed}")
 
-        print(f"Disallow List: {disallowed}")
-        start_date = dt_util.utcnow() - SCAN_INTERVAL
+        start_date = self.last_ran
+
         raw_data = await recorder.get_instance(self.hass).async_add_executor_job(
             functools.partial(
                 state_changes_during_period, start_time=start_date, hass=self.hass
             )
         )
-        sensor_data = {}
 
+        sensor_data = {}
         filtered_data = raw_data.copy()
+
         for key in raw_data.keys():
             if key.split(".")[0] in disallowed or key == f"sensor.{self._name.lower()}":
                 filtered_data.pop(key)
+
         for key, value in filtered_data.items():
             sensor_data[key] = [state.as_dict() for state in value]
 
-        # for key, value in raw_data.items():
-        #    # print(key, value)
-        #    lst = [key.find(s) for s in BLACKLIST]
-        #    # If one item on the list is not -1, then a blacklisted word was found
-        #    # TODO: check for sensitive information such as location data, names, etc
-        #    if lst.count(-1) != len(lst):
-        #        continue
-        #    sensor_data[key] = [state.as_dict() for state in value]
+        if sensor_data == {}:
+            logger.warn("No Data found for this time interval.")
+            return
 
-        # print(filtered_data)
-        print(sensor_data)
-        logger.warn("\n\n Data Collector will send this data:\n\n")
+        # print(sensor_data)
 
-        logger.warn(sensor_data)
-        # json_data = json.dumps(sensor_data.as_dict())
+        with open(os.path.join(os.path.dirname(__file__), "unclean.txt"), "w+") as f:
+            f.write(str(sensor_data))
+
+        # logger.warn("\n\n Data Collector will send this data:\n\n")
+        # logger.warn(sensor_data)
         logger.warn("\n\n Data Collector is now Filtering the data\n\n")
 
         filtered = await filter_data(sensor_data)
 
-        logger.warn("\n\n Data Collector will send this filtered data:\n\n")
+        # logger.warn("\n\n Data Collector will send this filtered data:\n\n")
+        # logger.warn(filtered)
 
-        logger.warn(filtered)
-
+        with open(os.path.join(os.path.dirname(__file__), "clean.txt"), "w+") as f:
+            f.write(str(filtered))
         json_data = json.dumps(filtered)
-
         self._attr_extra_state_attributes["last_sent_data"] = json_data
-
         # end = time.time()
+
         print(f"Size before compression: {sys.getsizeof(json_data)}")
         # start = time.time()
         logger.warn("\n\n Data Collector is now Compressing the data\n\n")
-
         compressed = await compress_data(json_data)
-        print("DAta type:")
-        print(type(compressed))
-
+        # print("DAta type:")
+        # print(type(compressed))
         compressed_size = sys.getsizeof(compressed)
         self._attr_extra_state_attributes["last_sent_size"] = round(
             compressed_size / 1000, 3
@@ -448,11 +463,23 @@ class Collector(Entity):
         self._attr_extra_state_attributes["last_sent_date"] = curr_day
         if "first_sent_date" not in self._attr_extra_state_attributes:
             self._attr_extra_state_attributes["first_sent_date"] = curr_day
+        # print("current entity uuid:", self._attr_extra_state_attributes["uuid"])
+        # print("last sent data:", self._attr_extra_state_attributes["last_sent_data"])
 
-        print("current entity uuid:", self._attr_extra_state_attributes["uuid"])
-        print("last sent data:", self._attr_extra_state_attributes["last_sent_data"])
         logger.warn("\n\n Data Collector is now Sending the data\n\n")
-
+        self.last_ran = dt_util.now()
         await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
 
-    # await send_data_to_api(compressed)
+
+# Ocasionally runs this code.
+# @Throttle(SCAN_INTERVAL)
+# async def check_time(self):
+#    """Can we run again yet?"""
+#    if dt_util.utcnow() > self.last_ran + self.random_salt + 86400000:
+#        self.random_salt = randint(600000, 3600000)
+#        TIME_INTERVAL = 86400
+#        SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
+#        self.async_update()
+#    else:
+#        TIME_INTERVAL = 3600
+#        SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
