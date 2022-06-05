@@ -2,6 +2,8 @@
   "config": {
     "step": {
       "user": {
+        "title": "Select which sensor groups' data to send.",
+        "description":" The 'All' and 'None' options override everything below, with 'None' taking precedence!",
         "data": {
           "host": "[%key:common::config_flow::data::host%]",
           "username": "[%key:common::config_flow::data::username%]",
@@ -19,3 +21,4 @@
     }
   }
 }
+

@@ -77,6 +77,21 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             sensors = [key.split(".")[0] for key in sensor_data]
 
             config_schema_list = {}
+            config_schema_list[
+                vol.Optional(str("Info") + "_desc")
+            ] = "Select below from which categories to send data. This can be changed later via dashboard card or integration options!"
+            config_schema_list[
+                vol.Optional(str("All") + "_desc")
+            ] = "Send All (Overrides everything!)"
+            config_schema_list[
+                vol.Required("All", description={"suggested_value": ""})
+            ] = bool
+            config_schema_list[
+                vol.Optional(str("None") + "_desc")
+            ] = "Send None (Overrides everything! (Even All!))"
+            config_schema_list[
+                vol.Required("None", description={"suggested_value": ""})
+            ] = bool
             for item in sensors:
                 config_schema_list[vol.Optional(str(item) + "_desc")] = item
 
@@ -145,7 +160,6 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
                 ):
                     old_entry = entry
                     for category in entry_d["data"]:
-                        print(f"cat: {category}")
                         if category == "uuid":
                             user_uuid = entry_d["data"][category]
                             break
@@ -169,6 +183,21 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
         sensors = [key.split(".")[0] for key in sensor_data]
 
         config_schema_list = {}
+        config_schema_list[
+            vol.Optional(str("Info") + "_desc")
+        ] = "Select below from which categories to send data. This can be changed later via dashboard card or integration options!"
+        config_schema_list[
+            vol.Optional(str("All") + "_desc")
+        ] = "Send All (Overrides everything!)"
+        config_schema_list[
+            vol.Required("All", description={"suggested_value": ""})
+        ] = bool
+        config_schema_list[
+            vol.Optional(str("None") + "_desc")
+        ] = "Send None (Overrides everything! (Even All!))"
+        config_schema_list[
+            vol.Required("None", description={"suggested_value": ""})
+        ] = bool
         for item in sensors:
             config_schema_list[vol.Optional(str(item) + "_desc")] = item
 

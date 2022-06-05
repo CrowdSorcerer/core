@@ -11,6 +11,7 @@ from time import time
 import regex as re
 import requests
 import scrubadub
+from scrubadub.filth.postalcode import PostalCodeFilth
 from random import randint
 
 import homeassistant.components.recorder as recorder
@@ -89,7 +90,7 @@ FILTERS = (
     EN_NAME_LIST + PT_NAME_LIST + COUNTRY_LIST + CUSTOM_BLACKLIST + PT_LOCATION_LIST
 )  # + PT_LOCATION_LIST TODO : THIS IS THE GUILTY BASTARD - FIND OUT WHY IT NOT WORKING - MAYBE MULTIPLE WORDS PER LINE?
 
-FILTERED_KEYS = ["user_id", "latitude", "longitude"]
+FILTERED_KEYS = ["user_id", "latitude", "longitude", "lon", "lat"]
 
 
 class PIIReplacer(scrubadub.post_processors.PostProcessor):
@@ -99,9 +100,24 @@ class PIIReplacer(scrubadub.post_processors.PostProcessor):
     def process_filth(self, filth_list):
 
         for filth in filth_list:
-            filth.replacement_string = "REDACTED"
+            filth.replacement_string = "{{REDACTED}}"
 
         return filth_list
+
+
+class IPDetector(scrubadub.detectors.RegexDetector):
+
+    name = "ip"
+    ip = r"/^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$/"
+    regex = re.compile("/^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$/", re.IGNORECASE)
+    filth_cls = PostalCodeFilth
+
+
+class PTPostalDetector(scrubadub.detectors.RegexDetector):
+
+    name = "pt_postal"
+    regex = re.compile("\d{4}([\-]\d{3})?", re.IGNORECASE)
+    filth_cls = scrubadub.filth.Filth
 
 
 async def compress_data(data):
@@ -129,12 +145,10 @@ async def filter_data(data):
         else:
             if isinstance(data, list):
                 for it in data:
-
                     await custom_filter_keys(it)
             else:
 
                 if data in FILTERED_KEYS:
-                    print("redacting")
                     data[key] = """{{REDACTED}}"""
         return data
 
@@ -174,63 +188,46 @@ async def filter_data(data):
         return to_replace
 
     # TODO get this working
-    def custom_filter_reg():
-        ip = r"/^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$/"
-        postal_PT = r"\d{4}([\-]\d{3})?"
+    def custom_filter_reg(data):
+        print(f" got data: {data}")
+        ip = re.compile(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b")
+        postal_PT = re.compile(r"\d{4}([\-]\d{3})?")
+        data = re.sub(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", "{{REDACTED}}", data)
+        data = re.sub(r"\d{4}([\-]\d{3})?", "{{REDACTED}}", data)
 
-    # For filter testing (checks if working in nested lists/dicts)
-    ## meantest = [
-    #    {
-    #        "eter": [
-    #            {"a": "aaaa"},
-    #            {
-    #                "user_id": "asd",
-    #                "test": {
-    #                    "user_id": "das",
-    #                    "tertert": [
-    #                        {"user_id": "dasdasd"},
-    #                        {"asdasd": {"asdasd": "2324", "user_id": "234245456"}},
-    #                    ],
-    #                },
-    #            },
-    #        ]
-    #    }
-    # ]
-
-    # it = (
-    #                    it.replace(".", "_")
-    #                    .replace("<", "_")
-    #                    .replace(">", "_")
-    #                    .replace("*", "_")
-    #                    .replace("#", "_")
-    #                    .replace("%", "_")
-    #                    .replace("&", "_")
-    #                    .replace(":", "_")
-    #                    .replace("\\\\", "_")
-    #                    .replace("+", "_")
-    #                    .replace("?", "_")
-    #                    .replace("/", "_")
-    #                )
-
-    data = await custom_filter_keys(data)
-    # print("data before scrub")
-    # print(data)
-    scrubber = scrubadub.Scrubber(post_processor_list=[PIIReplacer()])
+        # data = postal_PT.sub(data, "{{REDACTED}}")
+        return data
 
     test = {
         "name": "Joseph Joestar",
         "postal_code": "1234-254",
         "tt": "@handlegoesheere",
         "ph": "3518844228",
+        "ip": "127.0.0.1",
+        "longitude": "12.34564",
+        "latitude": "9328475.3",
+        "lon": "1234",
+        "lat": "984.2",
     }
+    data = test
+    data = await custom_filter_keys(data)
+    # print("data before scrub")
+    print(data)
+    scrubber = scrubadub.Scrubber(post_processor_list=[PIIReplacer()])
+    # scrubber.add_detector(IPDetector)
+    # scrubber.add_detector(PTPostalDetector)
 
     scrubber.add_detector(scrubadub.detectors.UserSuppliedFilthDetector(FILTERS))
 
     # TODO Check if we can use this detector -> dependency has a
     # v e r y large file size!
     # scrubber.add_detector(scrubadub_spacy.detectors.AddressDetector)
-    data = scrubber.clean(json.dumps(data))
+    # data = scrubber.clean(json.dumps(data))
 
+    data = scrubber.clean(json.dumps(data))
+    data = custom_filter_reg(data)
+
+    # data = re.findall(data, "{{REDACTED}}")
     data = (
         data.replace(".", "_")
         .replace("<", "_")
@@ -255,7 +252,6 @@ async def filter_data(data):
     data = json.loads(data)
     # to_replace = await sanitize(data, {})
     print("CLEANED UP")
-    print(data)
     # print("to repl:")
     #    print(to_replace)
 
@@ -343,7 +339,7 @@ class Collector(Entity):
             # self.random_time[0],
             # self.random_time[1],
             # self.random_time[2],
-            second=30,
+            second=40,
         )
 
     #        schedule()
@@ -377,7 +373,6 @@ class Collector(Entity):
         except AttributeError:
 
             self.last_ran = dt_util.start_of_local_day()
-
             print(f"Last ran: {self.last_ran}")
 
             # Should only happen the very first time it's ran.
@@ -387,7 +382,6 @@ class Collector(Entity):
 
         disallowed = []
         entries = self.hass.config_entries.async_entries()
-
         for entry in entries:
             entry = entry.as_dict()
             if entry["domain"] == "data_collector" and entry["title"] == "options":
@@ -400,7 +394,14 @@ class Collector(Entity):
                     elif not entry["data"][category]:
                         disallowed.append(category)
                 break
-        # print(f"Disallow List: {disallowed}")
+        print(f"Disallow List: {disallowed}")
+
+        if "None" not in disallowed:
+            logger.info("Data Collector is not collecting data due to user choices.")
+            return
+        elif "All" not in disallowed:
+            disallowed = []
+        print(f"Final disallow List: {disallowed}")
 
         start_date = self.last_ran
 
