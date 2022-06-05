@@ -1,1 +1,0 @@
-{'name': '{{REDACTED}} Joestar', 'postal_code': '{{REDACTED}}', 'tt': '{{REDACTED}}', 'ph': '{{REDACTED}}', 'ip': '{{REDACTED}}', 'longitude': '{{REDACTED}}', 'latitude': '{{REDACTED}}', '{{REDACTED}}': '{{REDACTED}}', 'lat': '{{REDACTED}}'}

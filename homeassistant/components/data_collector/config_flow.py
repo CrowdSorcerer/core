@@ -79,7 +79,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             config_schema_list = {}
             config_schema_list[
                 vol.Optional(str("Info") + "_desc")
-            ] = "Select below from which categories to send data. This can be changed later via dashboard card or integration options!"
+            ] = "Select below from which categories to send data. This can be changed later via integration options!"
             config_schema_list[
                 vol.Optional(str("All") + "_desc")
             ] = "Send All (Overrides everything!)"
@@ -185,7 +185,7 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
         config_schema_list = {}
         config_schema_list[
             vol.Optional(str("Info") + "_desc")
-        ] = "Select below from which categories to send data. This can be changed later via dashboard card or integration options!"
+        ] = "Select below from which categories to send data. This can be changed later via integration options (here)!"
         config_schema_list[
             vol.Optional(str("All") + "_desc")
         ] = "Send All (Overrides everything!)"
