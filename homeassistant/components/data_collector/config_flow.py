@@ -50,7 +50,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
-        logger.warn("\n\n Data Collector is being setup\n\n")
+        logger.info("Data Collector is being setup")
 
         return CollectorOptionsFlow(config_entry)
 

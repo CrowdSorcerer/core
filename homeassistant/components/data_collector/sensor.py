@@ -236,7 +236,6 @@ class Collector(Entity):
         self._state = "Idle"
         self._attr_extra_state_attributes = {"test_key": "test_val"}
         self._available = True
-        _LOGGER.debug("init")
         self.uuid = None
         self.random_time = [randint(0, 6), randint(0, 59), randint(0, 59)]
         schedule = async_track_time_change(
