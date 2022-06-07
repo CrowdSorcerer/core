@@ -13,6 +13,7 @@ import requests
 import scrubadub
 from scrubadub.filth.postalcode import PostalCodeFilth
 from random import randint
+from homeassistant.components import persistent_notification
 
 import homeassistant.components.recorder as recorder
 
@@ -232,7 +233,7 @@ class Collector(Entity):
         super().__init__()
         self.hass = hass
         self._name = "Crowdsourcerer"
-        self._state = "Collecting"
+        self._state = "Idle"
         self._attr_extra_state_attributes = {"test_key": "test_val"}
         self._available = True
         _LOGGER.debug("init")
@@ -241,10 +242,10 @@ class Collector(Entity):
         schedule = async_track_time_change(
             self.hass,
             self.async_collect_data,
-            self.random_time[0],
-            self.random_time[1],
-            self.random_time[2],
-            # second=40,
+            # self.random_time[0],
+            # self.random_time[1],
+            # self.random_time[2],
+            second=40,
         )
         logger.info(
             "Data Collector will run at %dh %dmin %ds",
@@ -275,6 +276,7 @@ class Collector(Entity):
 
     @callback
     async def async_collect_data(self, *_):
+        self._state = "Collecting"
         """Main execution flow"""
         start = time()
 
@@ -348,7 +350,7 @@ class Collector(Entity):
         json_data = json.dumps(filtered)
         self._attr_extra_state_attributes["last_sent_data"] = json_data
 
-        logger.info("Data Collector is cmpressing the data")
+        logger.info("Data Collector is compressing the data")
         compressed = await compress_data(json_data)
 
         compressed_size = sys.getsizeof(compressed)
@@ -369,3 +371,13 @@ class Collector(Entity):
         await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
         end = time()
         logger.info("Entire process took %d s", (end - start))
+        persistent_notification.create(
+            self.hass,
+            (
+                f"Data Collector has sent data to the Data Lake.<br />"
+                f"There were {json_data.count('{{REDACTED}}')} pieces of redacted data."
+            ),
+            title="Data Collector: Data Sent",
+            notification_id="data_collector_notification",
+        )
+        self._state = "Idle"
