@@ -242,10 +242,10 @@ class Collector(Entity):
         schedule = async_track_time_change(
             self.hass,
             self.async_collect_data,
-            # self.random_time[0],
-            # self.random_time[1],
-            # self.random_time[2],
-            second=40,
+            self.random_time[0],
+            self.random_time[1],
+            self.random_time[2],
+            # second=40,
         )
         logger.info(
             "Data Collector will run at %dh %dmin %ds",
