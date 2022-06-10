@@ -125,7 +125,7 @@ async def filter_data(data):
 
     def custom_filter_reg(data):
         """Filters based on Regex Expressions"""
-        data = re.sub(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", "{{REDACTED}}", data)
+        data = re.sub(r"\ (?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", "{{REDACTED}}", data)
         data = re.sub(r"\d{4}[\-]\d{3}", "{{REDACTED}}", data)
         return data
 
@@ -241,10 +241,10 @@ class Collector(Entity):
         schedule = async_track_time_change(
             self.hass,
             self.async_collect_data,
-            self.random_time[0],
-            self.random_time[1],
-            self.random_time[2],
-            # second=40,
+            # self.random_time[0],
+            # self.random_time[1],
+            # self.random_time[2],
+            second=40,
         )
         logger.info(
             "Data Collector will run at %dh %dmin %ds",
@@ -342,11 +342,16 @@ class Collector(Entity):
         with open(os.path.join(os.path.dirname(__file__), "unclean.json"), "w+") as f:
             f.write(str(sensor_data))
 
+        logger.debug("Collected Data (Pre-Filter):")
+        logger.debug(json.dumps(sensor_data))
         filtered = await filter_data(sensor_data)
 
         with open(os.path.join(os.path.dirname(__file__), "clean.json"), "w+") as f:
             f.write(str(filtered))
         json_data = json.dumps(filtered)
+
+        logger.debug("Collected Data (Post-Filter):")
+        logger.debug(json_data)
         self._attr_extra_state_attributes["last_sent_data"] = json_data
 
         logger.info("Data Collector is compressing the data")

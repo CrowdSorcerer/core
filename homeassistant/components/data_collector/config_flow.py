@@ -182,6 +182,16 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
 
         sensors = [key.split(".")[0] for key in sensor_data]
 
+        prev_config = []
+
+        entries = self.hass.config_entries.async_entries()
+        for entry in entries:
+            entry = entry.as_dict()
+            if entry["domain"] == "data_collector" and entry["title"] == "options":
+                for category in entry["data"]:
+                    if entry["data"][category]:
+                        prev_config.append(category)
+                break
         config_schema_list = {}
         config_schema_list[
             vol.Optional(str("Info") + "_desc")
@@ -190,19 +200,35 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(str("All") + "_desc")
         ] = "Send All (Overrides everything!)"
         config_schema_list[
-            vol.Required("All", description={"suggested_value": ""})
+            vol.Required(
+                "All",
+                description={"suggested_value": ""},
+                default=True if ("All" in prev_config) else False,
+            )
         ] = bool
         config_schema_list[
             vol.Optional(str("None") + "_desc")
         ] = "Send None (Overrides everything! (Even All!))"
         config_schema_list[
-            vol.Required("None", description={"suggested_value": ""})
+            vol.Required(
+                "None",
+                description={"suggested_value": ""},
+                default=True if ("None" in prev_config) else False,
+            )
         ] = bool
+
+        print(f"Previous config: {prev_config}")
         for item in sensors:
+            print(item)
+            print(item in prev_config)
             config_schema_list[vol.Optional(str(item) + "_desc")] = item
 
             config_schema_list[
-                vol.Required(item, description={"suggested_value": ""})
+                vol.Required(
+                    item,
+                    description={"suggested_value": ""},
+                    default=True if (item in prev_config) else False,
+                )
             ] = bool
 
         return self.async_show_form(
