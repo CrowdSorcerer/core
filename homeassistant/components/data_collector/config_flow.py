@@ -60,7 +60,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle the initial step."""
         if user_input is None:
-            logger.warn("\n\n Data Collector starting config flow\n\n")
+            logger.info("Data Collector starting config flow")
 
             start_date = dt_util.utcnow() - SCAN_INTERVAL
 
@@ -106,12 +106,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            print(f"user input: {user_input}")
             # if user_input[CONF_NAME] not in self.hass.config_entries.async_entries(
             #    DOMAIN
             # ):
             user_input["uuid"] = str(uuid.uuid4())
-            print(f"User input: {user_input}")
+            # logger.info(f"user input: {user_input}")
+
             # self.hass.data[DOMAIN]["UUID"] = uuid.uuid4()
             return self.async_create_entry(title="options", data=user_input)
 
@@ -188,7 +188,9 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
         for entry in entries:
             entry = entry.as_dict()
             if entry["domain"] == "data_collector" and entry["title"] == "options":
+                # logger.info(entry)
                 for category in entry["data"]:
+                    # logger.info("%s:%s", category, entry["data"][category])
                     if entry["data"][category]:
                         prev_config.append(category)
                 break
