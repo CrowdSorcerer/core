@@ -18,6 +18,7 @@ from homeassistant.core import callback
 # from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import selector, config_validation as cv
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, TIME_INTERVAL, logger
@@ -74,48 +75,38 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             for key, value in raw_data.items():
                 sensor_data[key] = [state.as_dict() for state in value]
 
-            sensors = [key.split(".")[0] for key in sensor_data]
+            sensors = ["All", "None"] + [
+                key
+                for key in sensor_data
+                if (
+                    key != "sensor.crowdsourcerer"
+                    and key != "persistent_notification.data_collector_notification"
+                )
+            ]
 
-            config_schema_list = {}
-            config_schema_list[
-                vol.Optional(str("Info") + "_desc")
-            ] = "Select below from which categories to send data. This can be changed later via integration options!"
-            config_schema_list[
-                vol.Optional(str("All") + "_desc")
-            ] = "Send All (Overrides everything!)"
-            config_schema_list[
-                vol.Required("All", description={"suggested_value": ""})
-            ] = bool
-            config_schema_list[
-                vol.Optional(str("None") + "_desc")
-            ] = "Send None (Overrides everything! (Even All!))"
-            config_schema_list[
-                vol.Required("None", description={"suggested_value": ""})
-            ] = bool
-            for item in sensors:
-                config_schema_list[vol.Optional(str(item) + "_desc")] = item
-
-                config_schema_list[
-                    vol.Required(item, description={"suggested_value": ""})
-                ] = bool
-            return self.async_show_form(
-                step_id="user",
-                data_schema=vol.Schema(config_schema_list),
+            data_schema = vol.Schema(
+                {
+                    vol.Optional(
+                        str("Info") + "_desc"
+                    ): "Select below from which entities to send data. This can be changed later via integration options (here)! \n Please keep in mind that 'None' and 'All' override other options, with 'None' taking precedence.",
+                    vol.Optional(
+                        "sensors",
+                    ): cv.multi_select({item: None for item in sensors}),
+                }
             )
+
+            return self.async_show_form(step_id="user", data_schema=data_schema)
 
         errors = {}
 
         if user_input is not None:
-            # if user_input[CONF_NAME] not in self.hass.config_entries.async_entries(
-            #    DOMAIN
-            # ):
-            user_input["uuid"] = str(uuid.uuid4())
-            # logger.info(f"user input: {user_input}")
+            data = {}
+            data["sensors"] = user_input["sensors"]
+            data["uuid"] = str(uuid.uuid4())
+            print(data)
+            return self.async_create_entry(title="options", data=data)
 
-            # self.hass.data[DOMAIN]["UUID"] = uuid.uuid4()
-            return self.async_create_entry(title="options", data=user_input)
-
-        # should never get here, unsure how to solve?
+        # should never get here
         self._errors[
             CONF_NAME
         ] = "This configuration has already taken place. You can change your settings in the integration options panel."
@@ -145,10 +136,6 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
 
             print("Selected Sensors:")
             print(user_input)
-            bl = []
-            for entry in user_input:
-                if not user_input[entry]:
-                    bl.append(entry)
 
             user_uuid = None
             entries = self.hass.config_entries.async_entries()
@@ -180,8 +167,17 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
         for key, value in raw_data.items():
             sensor_data[key] = [state.as_dict() for state in value]
 
-        sensors = [key.split(".")[0] for key in sensor_data]
+        sensors = ["All", "None"] + [
+            key
+            for key in sensor_data
+            if key != "sensor.crowdsourcerer"
+            and key != "persistent_notification.data_collector_notification"
+        ]
+        if "persistent_notification.data_collector_notification" in sensors:
+            sensors.pop("persistent_notification.data_collector_notification")
 
+        if "sensor.crowdsourcerer" in sensors:
+            sensors.pop("sensor.crowdsourcerer")
         prev_config = []
 
         entries = self.hass.config_entries.async_entries()
@@ -189,51 +185,22 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
             entry = entry.as_dict()
             if entry["domain"] == "data_collector" and entry["title"] == "options":
                 # logger.info(entry)
-                for category in entry["data"]:
-                    # logger.info("%s:%s", category, entry["data"][category])
-                    if entry["data"][category]:
-                        prev_config.append(category)
+                prev_config = entry["data"]["sensors"]
                 break
-        config_schema_list = {}
-        config_schema_list[
-            vol.Optional(str("Info") + "_desc")
-        ] = "Select below from which categories to send data. This can be changed later via integration options (here)!"
-        config_schema_list[
-            vol.Optional(str("All") + "_desc")
-        ] = "Send All (Overrides everything!)"
-        config_schema_list[
-            vol.Required(
-                "All",
-                description={"suggested_value": ""},
-                default=True if ("All" in prev_config) else False,
-            )
-        ] = bool
-        config_schema_list[
-            vol.Optional(str("None") + "_desc")
-        ] = "Send None (Overrides everything! (Even All!))"
-        config_schema_list[
-            vol.Required(
-                "None",
-                description={"suggested_value": ""},
-                default=True if ("None" in prev_config) else False,
-            )
-        ] = bool
 
-        print(f"Previous config: {prev_config}")
-        for item in sensors:
-            print(item)
-            print(item in prev_config)
-            config_schema_list[vol.Optional(str(item) + "_desc")] = item
-
-            config_schema_list[
-                vol.Required(
-                    item,
-                    description={"suggested_value": ""},
-                    default=True if (item in prev_config) else False,
-                )
-            ] = bool
-
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(config_schema_list),
+        data_schema = vol.Schema(
+            {
+                vol.Optional(
+                    str("Info") + "_desc"
+                ): "Select below from which entities to send data. Please keep in mind that 'All' and 'None' override all other options, with 'None' taking precedence.",
+                vol.Optional(
+                    "sensors",
+                    description={"suggested_value": prev_config},
+                ): cv.multi_select({item: None for item in sensors}),
+            }
         )
+
+        return self.async_show_form(step_id="init", data_schema=data_schema)
+
+
+# selector.selector( {"select": {"options": sensors}}

@@ -1,5 +1,6 @@
 """Data collection service for smart home data crowdsourcing."""
 
+from dataclasses import dataclass
 import functools
 import json
 from datetime import timedelta, datetime
@@ -18,7 +19,7 @@ from homeassistant.components import persistent_notification
 import homeassistant.components.recorder as recorder
 
 from homeassistant.components.recorder.history import state_changes_during_period
-from homeassistant.components.sensor import PLATFORM_SCHEMA
+from homeassistant.components.sensor import PLATFORM_SCHEMA, SensorExtraStoredData
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as ConfigType
@@ -243,11 +244,11 @@ class Collector(Entity):
         schedule = async_track_time_change(
             self.hass,
             self.async_collect_data,
-            self.random_time[0],
-            self.random_time[1],
-            self.random_time[2],
+            # self.random_time[0],
+            # self.random_time[1],
+            # self.random_time[2],
             # minute=30,
-            # second=4,
+            second=4,
         )
         logger.info(
             "Data Collector will run at %dh %dmin %ds",
@@ -287,8 +288,7 @@ class Collector(Entity):
         except AttributeError:
             # Should only happen the very first time it's ran.
             # Why not on init? It'd reset the time everytime HA was restarted.
-            # Like this we lose one cycle but persist through restarts.
-            self.last_ran = dt_util.start_of_local_day()
+            self.last_ran = dt_util.now() - timedelta(days=1)
 
         logger.info("Data Collector is collecting data, This may take a little bit.")
 
@@ -297,14 +297,8 @@ class Collector(Entity):
         for entry in entries:
             entry = entry.as_dict()
             if entry["domain"] == "data_collector" and entry["title"] == "options":
-                for category in entry["data"]:
-                    if category == "uuid":
-                        self.uuid = entry["data"][category]
-                        self._attr_extra_state_attributes["uuid"] = entry["data"][
-                            category
-                        ]
-                    elif entry["data"][category]:
-                        allowed.append(category)
+                self.uuid = entry["data"]["uuid"]
+                allowed = entry["data"]["sensors"]
                 break
 
         if "None" in allowed:
@@ -331,7 +325,7 @@ class Collector(Entity):
 
         for key in raw_data.keys():
             if (
-                key.split(".")[0] not in allowed and "All" not in allowed
+                key not in allowed and "All" not in allowed
             ) or key == "sensor.crowdsourcerer":  # and not key == f"sensor.{self._name.lower()}":
                 filtered_data.pop(key)
 
@@ -354,7 +348,7 @@ class Collector(Entity):
         json_data = json.dumps(sensor_data)
 
         # logger.debug("Collected Data (Post-Filter):")
-        # logger.debug(json_data)
+        logger.info(json_data)
         self._attr_extra_state_attributes["last_sent_data"] = json_data
 
         logger.info("Data Collector is compressing the data")
